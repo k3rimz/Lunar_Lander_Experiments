@@ -7,13 +7,14 @@ import sys
 import math
 
 class Lander:
-    def __init__(self, position, angle=0, gravity=0.05, thrust_power=0.1):
+    def __init__(self, position, angle=0, gravity=0.02, thrust_power=0.1, initial_fuel=1000):
         self.position = position
         self.angle = angle
         self.velocity = [0, 0]
         self.size = 15
         self.gravity = gravity
         self.thrust_power = thrust_power
+        self.fuel = initial_fuel
 
     def rotate_left(self):
         self.angle -= 5
@@ -22,8 +23,10 @@ class Lander:
         self.angle += 5
 
     def apply_thrust(self):
-        self.velocity[0] += math.sin(math.radians(self.angle)) * self.thrust_power
-        self.velocity[1] -= math.cos(math.radians(self.angle)) * self.thrust_power
+        if self.fuel > 0:
+            self.velocity[0] += math.sin(math.radians(self.angle)) * self.thrust_power
+            self.velocity[1] -= math.cos(math.radians(self.angle)) * self.thrust_power
+            self.fuel -= 1
 
     def update_position(self):
         self.velocity[1] += self.gravity  # Apply gravity
@@ -65,7 +68,15 @@ FPS = 60
 # Initialize the lander
 lander = Lander([WIDTH / 2, HEIGHT / 2])
 
-# Game loop
+def reset_game():
+    global lander  # Use global to modify the global instance of Lander
+    # Reset or reinitialize the lander
+    lander = Lander([WIDTH / 2, HEIGHT / 2], initial_fuel=1000)
+    # Add reset or initialization for other elements like fuel, score, etc. here later
+    # fuel = MAX_FUEL
+    # score = 0
+
+# MAIN GAME LOOP
 running = True
 while running:
     # Event handling
@@ -81,6 +92,10 @@ while running:
         lander.rotate_right()
     if keys[pygame.K_UP]:
         lander.apply_thrust()
+    if keys[pygame.K_r]:
+        reset_game()
+    if keys[pygame.K_q]:
+        pygame.quit()
 
     # Update and draw
     lander.update_position()
@@ -89,6 +104,10 @@ while running:
     screen.fill(BLUE)  # Fill background
     pygame.draw.rect(screen, GREEN, platform)  # Draw the platform
     lander.draw(screen)  # Draw the lander
+
+    font = pygame.font.SysFont("Arial", 18) 
+    fuel_text = font.render(f"Fuel: {lander.fuel}", True, (255, 255, 255))
+    screen.blit(fuel_text, (10, 10))  
 
     pygame.display.flip()
     clock.tick(FPS)

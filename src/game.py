@@ -3,7 +3,7 @@ import pygame
 import sys
 import math
 from enum import Enum
-from landscape import Landscape, LandscapeLine
+from landscape import Landscape, LandscapeLine, Vector2
 
 
 class GameState(Enum):
@@ -93,24 +93,21 @@ class Lander:
         self.velocity[1] += self.gravity
         self.position[0] += self.velocity[0]
         self.position[1] += self.velocity[1]
-        self.position[0] = max(0, min(self.position[0], landscape.width))
+        self.position[0] = self.position[0] % landscape.width
         self.position[1] = max(0, min(self.position[1], landscape.height))
 
-    def check_collision(self, obj):
+    def check_collision(self, landscape):
         lander_rect = pygame.Rect(self.position[0] - self.size, self.position[1] - self.size, self.size * 2, self.size * 2)
 
-        if isinstance(obj, LandscapeLine):
-            # Collision check for landscape lines
-            if lander_rect.clipline(obj.p1.x, obj.p1.y, obj.p2.x, obj.p2.y):
-                if obj.landable and -5 <= self.angle <= 5 and abs(self.velocity[0]) <= 0.5 and abs(self.velocity[1]) <= 0.5:
-                    return self.handle_landing(obj)
-                else:
-                    return 'crashed'
-        elif isinstance(obj, LandingPad):
-            # Collision check for landing pads
-            if lander_rect.colliderect(obj.rect):
-                if -5 <= self.angle <= 5 and abs(self.velocity[0]) <= 0.5 and abs(self.velocity[1]) <= 0.5:
-                    return self.handle_landing(obj)
+        # Calculate which tile the lander is in
+        tile_offset = int(self.position[0] // landscape.tileWidth) * landscape.tileWidth
+
+        for line in landscape.lines:
+            line_start = Vector2(line.p1.x + tile_offset, line.p1.y)
+            line_end = Vector2(line.p2.x + tile_offset, line.p2.y)
+            if lander_rect.clipline(line_start.x, line_start.y, line_end.x, line_end.y):
+                if line.landable and -5 <= self.angle <= 5 and abs(self.velocity[0]) <= 0.5 and abs(self.velocity[1]) <= 0.5:
+                    return 'landed'
                 else:
                     return 'crashed'
 
@@ -137,17 +134,13 @@ class Lander:
             return None
 
     def draw_collision_box(self, surface, camera):
-        # Calculate the corners of the lander's collision box
         points = [
             (self.position[0] + self.size * math.sin(math.radians(self.angle)), self.position[1] - self.size * math.cos(math.radians(self.angle))),
             (self.position[0] - self.size * math.sin(math.radians(self.angle + 120)), self.position[1] + self.size * math.cos(math.radians(self.angle + 120))),
             (self.position[0] - self.size * math.sin(math.radians(self.angle - 120)), self.position[1] + self.size * math.cos(math.radians(self.angle - 120))),
         ]
 
-        # Adjust the points based on the camera position
-        adjusted_points = [(x - camera.rect.left, y - camera.rect.top) for x, y in points]
-
-        # Draw the collision box
+        adjusted_points = [world_to_screen(p, camera, landscape) for p in points]
         pygame.draw.polygon(surface, (255, 0, 0), adjusted_points, 2)
 
     def reset_position(self):
@@ -157,42 +150,32 @@ class Lander:
         self.score_added = False  # Reset score flag for next landing or crash
         
     def draw(self, surface, camera):
-        # Load the lander icon image with transparency
+        screen_pos = world_to_screen(self.position, camera, landscape)
         lander_icon = pygame.image.load("assets/lander.png").convert_alpha()
-
-        # Rotate the lander icon based on the current angle
         rotated_icon = pygame.transform.rotate(lander_icon, -self.angle)
-
-        # Calculate the position to draw the rotated lander icon relative to the camera
-        icon_rect = rotated_icon.get_rect(center=(self.position[0] - camera.rect.left, self.position[1] - camera.rect.top))
-
-        # Draw the rotated lander icon on the surface
+        icon_rect = rotated_icon.get_rect(center=screen_pos)
         surface.blit(rotated_icon, icon_rect)
 
         # Draw the metrics, score, and time
-        self.draw_metrics(surface, camera)
-        self.draw_score(surface, camera)
-        self.draw_time(surface, camera)
+        self.draw_metrics(surface)
+        self.draw_score(surface)
+        self.draw_time(surface)
 
-    def draw_metrics(self, surface, camera):
+    def draw_metrics(self, surface):
         font = pygame.font.SysFont("Arial", 18)
-        altitude_text = font.render(f"Altitude: {int(WINDOW_HEIGHT - self.position[1] + camera.rect.top)}", True, (255, 255, 255))        
+        altitude_text = font.render(f"Altitude: {int(WINDOW_HEIGHT - self.position[1])}", True, (255, 255, 255))
         horizontal_speed_text = font.render(f"Horizontal Speed: {int(self.velocity[0])}", True, (255, 255, 255))
         vertical_speed_text = font.render(f"Vertical Speed: {int(self.velocity[1])}", True, (255, 255, 255))
         surface.blit(altitude_text, (10, 30))
         surface.blit(horizontal_speed_text, (10, 50))
         surface.blit(vertical_speed_text, (10, 70))
 
-    def update_score(self, points):
-        global score
-        score += points
-
-    def draw_score(self, surface, camera):
+    def draw_score(self, surface):
         font = pygame.font.SysFont("Arial", 18)
         score_text = font.render(f"Score: {score}", True, (255, 255, 255))
         surface.blit(score_text, (10, 90))
 
-    def draw_time(self, surface, camera):
+    def draw_time(self, surface):
         current_time = pygame.time.get_ticks()
         elapsed_time = (current_time - start_time) // 1000
         font = pygame.font.SysFont("Arial", 18)
@@ -251,15 +234,28 @@ class Camera:
         self.width = width
         self.height = height
 
-    def update(self, target_pos):
-        x = -target_pos[0] + self.width // 2
-        y = -target_pos[1] + self.height // 2
-        
-        # Limit the camera movement
-        x = min(0, max(-(landscape.width - self.width), x))
-        y = min(0, max(-(landscape.height - self.height), y))
-        
-        self.rect.topleft = (x, y)
+    def update(self, target_pos, landscape):
+        # Center the camera on the target
+        self.rect.centerx = target_pos[0]
+        self.rect.centery = target_pos[1]
+
+        # Vertical clamping
+        if self.rect.top < 0:
+            self.rect.top = 0
+        elif self.rect.bottom > landscape.height:
+            self.rect.bottom = landscape.height
+
+        # Horizontal wrapping
+        if self.rect.left < 0:
+            self.rect.left += landscape.width
+        elif self.rect.right > landscape.width:
+            self.rect.left -= landscape.width
+
+
+def world_to_screen(pos, camera, landscape):
+    x = (pos[0] - camera.rect.left) % landscape.width
+    y = pos[1] - camera.rect.top
+    return (x, y)
 
 
 class Map:
@@ -333,13 +329,14 @@ while running:
     elif current_game_state == GameState.IN_GAME:
         # Handle all the in-game updates, inputs, and rendering
         # This includes moving the lander, checking for collisions, etc.
-        screen.fill(BLUE)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.VIDEORESIZE:
-                update_window_size(event.w, event.h)
+                WINDOW_WIDTH, WINDOW_HEIGHT = event.w, event.h
+                screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.RESIZABLE)
+                camera.width, camera.height = WINDOW_WIDTH, WINDOW_HEIGHT
 
         keys = pygame.key.get_pressed()
         if keys[pygame.K_LEFT]:
@@ -356,17 +353,19 @@ while running:
         # Update lander, landscape, camera
         lander.update_position()
         lander.update_rotation()
-        camera.update(lander.position)
+        camera.update(lander.position, landscape)
+
+
+        screen.fill((0, 0, 0))
         landscape.render(screen, camera.rect)
         lander.draw(screen, camera)
-        lander.draw_collision_box(screen, camera)  # Draw lander's collision box
+        lander.draw_collision_box(screen, camera)  
+        lander.draw_metrics(screen)
 
-        # Check for collisions
-        collision_result = None
-        for line in landscape.lines:
-            collision_result = lander.check_collision(line)
-            if collision_result:
-                break
+        collision_result = lander.check_collision(landscape)
+        if collision_result:
+            print(collision_result)
+            lander = Lander([lander.position[0], 50])  # Reset vertical position but keep horizontal
 
         if collision_result == 'landed':
             current_game_state = GameState.LANDED_CRASHED
@@ -375,15 +374,19 @@ while running:
             current_game_state = GameState.LANDED_CRASHED
             print("Crashed!")
 
+        landscape.render(screen, camera.rect)
+        lander_screen_pos = (
+                lander.position[0] - camera.rect.left,
+                lander.position[1] - camera.rect.top
+            )
 
-        camera.update(lander.position)
 
         font = pygame.font.SysFont("Arial", 18)
         fuel_text = font.render(f"Fuel: {lander.fuel}", True, (255, 255, 255))
         screen.blit(fuel_text, (10, 10))
 
 
-        lander.draw_metrics(screen, camera)
+        
         pygame.display.flip()
         clock.tick(FPS)
 

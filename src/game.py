@@ -3,6 +3,8 @@ import pygame
 import sys
 import math
 from enum import Enum
+from landscape import Landscape, LandscapeLine, Vector2
+
 
 class GameState(Enum):
     MAIN_MENU = 1
@@ -40,6 +42,8 @@ class Button:
         return False
 
 
+
+
 class Lander:
     def __init__(self, position, angle=0, gravity=0.02, thrust_power=0.04, initial_fuel=1000, init_landed=False, init_score_added=False):
         self.position = position
@@ -52,12 +56,9 @@ class Lander:
         self.fuel = initial_fuel
         self.last_rotation_time = 0
         self.rotation_delay = 150
-        self.rotation_speed = 1.75  # Speed of rotation animation
+        self.rotation_speed = 1.75  
         self.landed = init_landed
         self.score_added = init_score_added
-
-
-    
 
 
     def rotate_left(self):
@@ -92,46 +93,55 @@ class Lander:
         self.velocity[1] += self.gravity
         self.position[0] += self.velocity[0]
         self.position[1] += self.velocity[1]
-        self.position[0] = max(0, min(self.position[0], WINDOW_WIDTH))
-        self.position[1] = max(0, min(self.position[1], WINDOW_HEIGHT))
+        self.position[0] = self.position[0] % landscape.width
+        self.position[1] = max(0, min(self.position[1], landscape.height))
 
-    def check_collision(self, platform):
-        # Calculate the corners of the lander based on its position, size, and angle
+    def check_collision(self, landscape):
+        lander_rect = pygame.Rect(self.position[0] - self.size, self.position[1] - self.size, self.size * 2, self.size * 2)
+
+        # Calculate which tile the lander is in
+        tile_offset = int(self.position[0] // landscape.tileWidth) * landscape.tileWidth
+
+        for line in landscape.lines:
+            line_start = Vector2(line.p1.x + tile_offset, line.p1.y)
+            line_end = Vector2(line.p2.x + tile_offset, line.p2.y)
+            if lander_rect.clipline(line_start.x, line_start.y, line_end.x, line_end.y):
+                if line.landable and -5 <= self.angle <= 5 and abs(self.velocity[0]) <= 0.5 and abs(self.velocity[1]) <= 0.5:
+                    return 'landed'
+                else:
+                    return 'crashed'
+
+        return None
+
+    def handle_landing(self, obj):
+        if not self.landed:
+            print("Landing successful.")
+            self.velocity = [0, 0]
+            self.landed = True
+            if not self.score_added:
+                multiplier = obj.multiplier if hasattr(obj, 'multiplier') else obj.bonus_multiplier
+                self.update_score(100 * multiplier)
+                self.fuel += 100 + (100 * multiplier)
+                self.fuel = min(self.fuel, 1000)
+                self.score_added = True
+                if isinstance(obj, LandscapeLine):
+                    self.position[1] = obj.p1.y - self.size
+                elif isinstance(obj, LandingPad):
+                    self.position[1] = obj.rect.top - self.size
+            return 'landed'
+        else:
+            print("Lander already landed.")
+            return None
+
+    def draw_collision_box(self, surface, camera):
         points = [
             (self.position[0] + self.size * math.sin(math.radians(self.angle)), self.position[1] - self.size * math.cos(math.radians(self.angle))),
             (self.position[0] - self.size * math.sin(math.radians(self.angle + 120)), self.position[1] + self.size * math.cos(math.radians(self.angle + 120))),
             (self.position[0] - self.size * math.sin(math.radians(self.angle - 120)), self.position[1] + self.size * math.cos(math.radians(self.angle - 120))),
         ]
 
-        # Check if any of the lander's corners are touching the platform
-        for point in points:
-            if platform.rect.collidepoint(point):
-                # Check landing conditions
-                if -5 <= self.angle <= 5 and abs(self.velocity[0]) <= 10 and abs(self.velocity[1]) <= 10:
-                    if not self.landed:
-                        print("Landing successful.")
-                        self.velocity = [0, 0]  # Stop the lander's motion
-                        self.landed = True  # Set the landed flag to True
-                        if not self.score_added:
-                            self.update_score(100 * platform.bonus_multiplier)  # Add points for successful landing
-                            self.fuel += 100 + (100 * platform.bonus_multiplier)  # Increase fuel based on landing success
-                            self.fuel = min(self.fuel, 1000)  # Optional: Cap the fuel
-                            self.score_added = True  # Set the score_added flag to True
-                            self.position[1] = platform.rect.top + self.size  # Adjust the lander's position to sit on the platform
-                            return 'landed'
-                    else:
-                        print("Lander already landed.")
-                    return  # Exit the method after a successful landing
-                else:
-                    # Crash scenario
-                    self.velocity = [0, 0]  # Stop the lander's motion
-                    print("Crash! Game Over.")
-                    return 'crashed'
-
-        
-        # Reset the flags if not touching any platform for more than 3 seconds 
-        self.landed = False
-        self.score_added = False
+        adjusted_points = [world_to_screen(p, camera, landscape) for p in points]
+        pygame.draw.polygon(surface, (255, 0, 0), adjusted_points, 2)
 
     def reset_position(self):
         self.position = [random.randint(0, WINDOW_WIDTH), -self.size]  # Start above the visible area
@@ -139,17 +149,11 @@ class Lander:
         self.landed = False
         self.score_added = False  # Reset score flag for next landing or crash
         
-    def draw(self, surface):
-        # Load the lander icon image with transparency
+    def draw(self, surface, camera):
+        screen_pos = world_to_screen(self.position, camera, landscape)
         lander_icon = pygame.image.load("assets/lander.png").convert_alpha()
-
-        # Rotate the lander icon based on the current angle
         rotated_icon = pygame.transform.rotate(lander_icon, -self.angle)
-
-        # Calculate the position to draw the rotated lander icon
-        icon_rect = rotated_icon.get_rect(center=self.position)
-
-        # Draw the rotated lander icon on the surface
+        icon_rect = rotated_icon.get_rect(center=screen_pos)
         surface.blit(rotated_icon, icon_rect)
 
         # Draw the metrics, score, and time
@@ -165,10 +169,6 @@ class Lander:
         surface.blit(altitude_text, (10, 30))
         surface.blit(horizontal_speed_text, (10, 50))
         surface.blit(vertical_speed_text, (10, 70))
-
-    def update_score(self, points):
-        global score
-        score += points
 
     def draw_score(self, surface):
         font = pygame.font.SysFont("Arial", 18)
@@ -187,14 +187,14 @@ GREEN = (0, 255, 0)
 BLACK = (0, 0, 0)
 
 def update_window_size(width, height):
-    global WINDOW_WIDTH, WINDOW_HEIGHT, screen, lander
+    global WINDOW_WIDTH, WINDOW_HEIGHT, screen, lander, camera
     WINDOW_WIDTH = width
     WINDOW_HEIGHT = height
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.RESIZABLE)
-    for pad in landing_pads:
-        pad.update_rect()
-    for terrain in terrain_group:
-        terrain.update_rect()
+    camera.width = WINDOW_WIDTH
+    camera.height = WINDOW_HEIGHT
+    camera.rect.width = WINDOW_WIDTH
+    camera.rect.height = WINDOW_HEIGHT
     lander.position = [WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2]  # Update lander position
 
 class LandingPad(pygame.sprite.Sprite):
@@ -216,21 +216,64 @@ class LandingPad(pygame.sprite.Sprite):
         )
 
 class Terrain(pygame.sprite.Sprite):
-    def __init__(self, x_ratio, y_ratio, width_ratio, height_ratio):
+    def __init__(self, x, y, width, height, bonus_multiplier=1):
         super().__init__()
-        self.x_ratio = x_ratio
-        self.y_ratio = y_ratio
-        self.width_ratio = width_ratio
-        self.height_ratio = height_ratio
-        self.update_rect()
+        self.rect = pygame.Rect(x, y, width, height)
+        self.bonus_multiplier = bonus_multiplier
 
-    def update_rect(self):
-        self.rect = pygame.Rect(
-            int(self.x_ratio * WINDOW_WIDTH),
-            int(self.y_ratio * WINDOW_HEIGHT),
-            int(self.width_ratio * WINDOW_WIDTH),
-            int(self.height_ratio * WINDOW_HEIGHT)
-        )
+class LandingPad(pygame.sprite.Sprite):
+    def __init__(self, x, y, width, height, bonus_multiplier=1):
+        super().__init__()
+        self.rect = pygame.Rect(x, y, width, height)
+        self.bonus_multiplier = bonus_multiplier
+
+
+class Camera:
+    def __init__(self, width, height):
+        self.rect = pygame.Rect(0, 0, width, height)
+        self.width = width
+        self.height = height
+
+    def update(self, target_pos, landscape):
+        # Center the camera on the target
+        self.rect.centerx = target_pos[0]
+        self.rect.centery = target_pos[1]
+
+        # Vertical clamping
+        if self.rect.top < 0:
+            self.rect.top = 0
+        elif self.rect.bottom > landscape.height:
+            self.rect.bottom = landscape.height
+
+        # Horizontal wrapping
+        if self.rect.left < 0:
+            self.rect.left += landscape.width
+        elif self.rect.right > landscape.width:
+            self.rect.left -= landscape.width
+
+
+def world_to_screen(pos, camera, landscape):
+    x = (pos[0] - camera.rect.left) % landscape.width
+    y = pos[1] - camera.rect.top
+    return (x, y)
+
+
+class Map:
+    def __init__(self, width, height):
+        self.width = width
+        self.height = height
+        self.terrain = pygame.sprite.Group()
+        self.landing_pads = pygame.sprite.Group()
+
+    def generate(self):
+        # Generate terrain
+        self.terrain.add(Terrain(0, self.height - 50, self.width, 50))  # Ground
+        self.terrain.add(Terrain(200, self.height - 200, 100, 50))  # Platform 1
+        self.terrain.add(Terrain(500, self.height - 300, 100, 50))  # Platform 2
+
+        # Generate landing pads
+        self.landing_pads.add(LandingPad(250, self.height - 250, 50, 10, bonus_multiplier=2))
+        self.landing_pads.add(LandingPad(550, self.height - 350, 50, 10, bonus_multiplier=3))
 
 
 WINDOW_WIDTH = 1400
@@ -246,19 +289,15 @@ start_time = pygame.time.get_ticks()
 
 
 def reset_game():
-    global lander
-    lander = Lander([WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2], initial_fuel=1000)
+    global lander, camera
+    lander = Lander([WINDOW_WIDTH / 2, 50], initial_fuel=1000)
+    camera = Camera(WINDOW_WIDTH, WINDOW_HEIGHT)
 
 
-landing_pads = pygame.sprite.Group()
-landing_pads.add(LandingPad(30, 20, 20, 20))
-landing_pads.add(LandingPad(0.1, 0.7, 0.1, 0.02, bonus_multiplier=2))
-landing_pads.add(LandingPad(0.8, 0.5, 0.1, 0.02, bonus_multiplier=3))
-
-terrain_group = pygame.sprite.Group()
-terrain_group.add(Terrain(0, 0.95, 1, 0.05))
 
 lander = Lander([WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2], initial_fuel=1000)
+landscape = Landscape()
+camera = Camera(WINDOW_WIDTH, WINDOW_HEIGHT)
 
 def show_main_menu():
     global current_game_state
@@ -290,11 +329,14 @@ while running:
     elif current_game_state == GameState.IN_GAME:
         # Handle all the in-game updates, inputs, and rendering
         # This includes moving the lander, checking for collisions, etc.
-        screen.fill(BLUE)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            elif event.type == pygame.VIDEORESIZE:
+                WINDOW_WIDTH, WINDOW_HEIGHT = event.w, event.h
+                screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.RESIZABLE)
+                camera.width, camera.height = WINDOW_WIDTH, WINDOW_HEIGHT
 
         keys = pygame.key.get_pressed()
         if keys[pygame.K_LEFT]:
@@ -308,45 +350,52 @@ while running:
         if keys[pygame.K_q]:
             pygame.quit()
 
-        lander.draw(screen)
+        # Update lander, landscape, camera
         lander.update_position()
         lander.update_rotation()
-
-        for pad in landing_pads:
-            pygame.draw.rect(screen, GREEN, pad.rect)
-        for terrain in terrain_group:
-            pygame.draw.rect(screen, GREEN, terrain.rect)
-
-        for pad in landing_pads:
-            lander.check_collision(pad)
-            collision_result_pad = lander.check_collision(pad)
-            if collision_result_pad == 'landed' or collision_result_pad == 'crashed':
-                current_game_state = GameState.LANDED_CRASHED
-        for terrain in terrain_group:
-            lander.check_collision(terrain)
-            collision_result_terrain = lander.check_collision(pad)
-            if collision_result_terrain == 'landed' or collision_result_terrain == 'crashed':
-                current_game_state = GameState.LANDED_CRASHED
+        camera.update(lander.position, landscape)
 
 
+        screen.fill((0, 0, 0))
+        landscape.render(screen, camera.rect)
+        lander.draw(screen, camera)
+        lander.draw_collision_box(screen, camera)  
+        lander.draw_metrics(screen)
+
+        collision_result = lander.check_collision(landscape)
+        if collision_result:
+            print(collision_result)
+            lander = Lander([lander.position[0], 50])  # Reset vertical position but keep horizontal
+
+        if collision_result == 'landed':
+            current_game_state = GameState.LANDED_CRASHED
+            print("Landed successfully!")
+        elif collision_result == 'crashed':
+            current_game_state = GameState.LANDED_CRASHED
+            print("Crashed!")
+
+        landscape.render(screen, camera.rect)
+        lander_screen_pos = (
+                lander.position[0] - camera.rect.left,
+                lander.position[1] - camera.rect.top
+            )
 
 
         font = pygame.font.SysFont("Arial", 18)
         fuel_text = font.render(f"Fuel: {lander.fuel}", True, (255, 255, 255))
         screen.blit(fuel_text, (10, 10))
 
+
+        
         pygame.display.flip()
         clock.tick(FPS)
 
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-            elif event.type == pygame.VIDEORESIZE:
-                update_window_size(event.w, event.h)
+
+        
 
     elif current_game_state == GameState.LANDED_CRASHED:
         # Pause, show results, wait for input, or automatically restart after a delay
-        pygame.time.delay(7000)  # For example, a 7-second pause
+        pygame.time.delay(1)  # For example, a 7-second pause
         current_game_state = GameState.IN_GAME  # Go back to in-game state for this example
 
 

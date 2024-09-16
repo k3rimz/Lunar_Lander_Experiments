@@ -110,7 +110,7 @@ def handle_in_game(screen, clock):
         if event.type == pygame.QUIT:
             return None
         elif event.type == pygame.VIDEORESIZE:
-            update_window_size(event.w, event.h, screen, camera, lander)
+            screen = update_window_size(event.w, event.h, screen, camera, lander, landscape)
 
     keys = pygame.key.get_pressed()
     if keys[pygame.K_LEFT]:

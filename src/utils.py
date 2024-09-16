@@ -9,7 +9,7 @@ GREEN = (0, 255, 0)
 BLACK = (0, 0, 0)
 
 def world_to_screen(pos, camera, landscape):
-    x = (pos[0] - camera.rect.left) % landscape.width
+    x = (pos[0] - camera.rect.left + landscape.width) % landscape.width
     y = pos[1] - camera.rect.top
     return (x, y)
 

@@ -3,6 +3,8 @@ import sys
 from enum import Enum
 from lander import Lander
 from landscape import Landscape
+from camera import Camera
+from ui import Button
 from utils import WINDOW_WIDTH, WINDOW_HEIGHT, FPS, update_window_size, world_to_screen
 
 class GameState(Enum):
@@ -10,46 +12,7 @@ class GameState(Enum):
     IN_GAME = 2
     LANDED_CRASHED = 3
 
-class Button:
-    def __init__(self, x, y, width, height, text=''):
-        self.color = (0, 200, 0)  # Green
-        self.x = x
-        self.y = y
-        self.width = width
-        self.height = height
-        self.text = text
 
-    def draw(self, win, outline=None):
-        if outline:
-            pygame.draw.rect(win, outline, (self.x-2, self.y-2, self.width+4, self.height+4), 0)
-        pygame.draw.rect(win, self.color, (self.x, self.y, self.width, self.height), 0)
-        if self.text != '':
-            font = pygame.font.SysFont('comicsans', 60)
-            text = font.render(self.text, 1, (0,0,0))
-            win.blit(text, (self.x + (self.width/2 - text.get_width()/2), self.y + (self.height/2 - text.get_height()/2)))
-
-    def is_over(self, pos):
-        return self.x < pos[0] < self.x + self.width and self.y < pos[1] < self.y + self.height
-
-class Camera:
-    def __init__(self, width, height):
-        self.rect = pygame.Rect(0, 0, width, height)
-        self.width = width
-        self.height = height
-
-    def update(self, target_pos, landscape):
-        self.rect.centerx = target_pos[0]
-        self.rect.centery = target_pos[1]
-
-        if self.rect.top < 0:
-            self.rect.top = 0
-        elif self.rect.bottom > landscape.height:
-            self.rect.bottom = landscape.height
-
-        if self.rect.left < 0:
-            self.rect.left += landscape.width
-        elif self.rect.right > landscape.width:
-            self.rect.left -= landscape.width
 
 def reset_game():
     global lander, camera

@@ -1,9 +1,28 @@
 import pygame
 import math
+import os
 from utils import world_to_screen
 from pygame.math import Vector2
 
 class Lander:
+    lander_icon = None
+
+    @classmethod
+    def load_assets(cls):
+        """Class method to load assets. Must be called after pygame.init()."""
+        try:
+            # Get the directory where this script is located
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            # Construct the path to the assets directory
+            assets_dir = os.path.join(script_dir, '..', 'assets')
+            # Construct the full path to the lander.png image
+            lander_image_path = os.path.join(assets_dir, "lander.png")
+            cls.lander_icon = pygame.image.load(lander_image_path).convert_alpha()
+        except pygame.error as e:
+            print(f"Unable to load lander image: {e}")
+            pygame.quit()
+            exit()
+
     def __init__(self, position, angle=0, gravity=0.02, thrust_power=0.04, initial_fuel=1000, init_landed=False, init_score_added=False):
         self.position = position
         self.angle = angle
@@ -50,27 +69,47 @@ class Lander:
         self.velocity[1] += self.gravity
         self.position[0] += self.velocity[0]
         self.position[1] += self.velocity[1]
-        self.position[0] = self.position[0] % landscape_width
+        # Remove horizontal wrapping
+        # self.position[0] = self.position[0] % landscape_width
         self.position[1] = max(0, min(self.position[1], landscape_height))
 
-    def check_collision(self, landscape):
-        lander_rect = pygame.Rect(self.position[0] - self.size, self.position[1] - self.size, self.size * 2, self.size * 2)
-        tile_offset = int(self.position[0] // landscape.tileWidth) * landscape.tileWidth
 
-        for line in landscape.lines:
-            line_start = Vector2(line.p1.x + tile_offset, line.p1.y)
-            line_end = Vector2(line.p2.x + tile_offset, line.p2.y)
-            if lander_rect.clipline(line_start.x, line_start.y, line_end.x, line_end.y):
-                if line.landable and -5 <= self.angle <= 5 and abs(self.velocity[0]) <= 0.5 and abs(self.velocity[1]) <= 0.5:
-                    return 'landed'
-                else:
-                    return 'crashed'
+    def check_collision(self, landscape):
+        lander_rect = pygame.Rect(
+            self.position[0] - self.size,
+            self.position[1] - self.size,
+            self.size * 2,
+            self.size * 2
+        )
+
+        tileWidth = landscape.tileWidth
+        lander_tile = int(self.position[0] // tileWidth)
+
+        # Check the current tile and adjacent tiles for potential collisions
+        for offset in [-1, 0, 1]:
+            tile_offset = lander_tile + offset
+            offset_x = tile_offset * tileWidth
+
+            for line in landscape.lines:
+                # Adjust line positions based on the tile offset
+                line_start_x = line.p1.x + (tile_offset * tileWidth)
+                line_end_x = line.p2.x + (tile_offset * tileWidth)
+                line_start_y = line.p1.y
+                line_end_y = line.p2.y
+
+                if lander_rect.clipline(line_start_x, line_start_y, line_end_x, line_end_y):
+                    if line.landable and -5 <= self.angle <= 5 and abs(self.velocity[0]) <= 0.5 and abs(self.velocity[1]) <= 0.5:
+                        self.landed = True
+                        return 'landed'
+                    else:
+                        return 'crashed'
         return None
+
+
 
     def draw(self, surface, camera, landscape):
         screen_pos = world_to_screen(self.position, camera, landscape)
-        lander_icon = pygame.image.load("assets/lander.png").convert_alpha()
-        rotated_icon = pygame.transform.rotate(lander_icon, -self.angle)
+        rotated_icon = pygame.transform.rotate(Lander.lander_icon, -self.angle)
         icon_rect = rotated_icon.get_rect(center=screen_pos)
         surface.blit(rotated_icon, icon_rect)
 

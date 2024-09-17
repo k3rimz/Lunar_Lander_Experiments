@@ -9,9 +9,10 @@ GREEN = (0, 255, 0)
 BLACK = (0, 0, 0)
 
 def world_to_screen(pos, camera, landscape):
-    x = (pos[0] - camera.rect.left + landscape.width) % landscape.width
+    x = pos[0] - camera.rect.left
     y = pos[1] - camera.rect.top
     return (x, y)
+
 
 def update_window_size(width, height, screen, camera, lander, landscape):
     global WINDOW_WIDTH, WINDOW_HEIGHT
@@ -28,8 +29,10 @@ def update_window_size(width, height, screen, camera, lander, landscape):
     # Update camera position to keep lander in view
     camera.rect.center = lander.position
     
-    # Ensure camera stays within landscape bounds
+    # Ensure camera stays within vertical bounds
     camera.rect.top = max(0, min(camera.rect.top, landscape.height - camera.rect.height))
-    camera.rect.left = camera.rect.left % landscape.width  # Wrap horizontally
+    # Remove horizontal wrapping
+    # camera.rect.left = camera.rect.left % landscape.width  
     
     return screen
+

@@ -1,3 +1,4 @@
+# game.py
 import pygame
 import sys
 from enum import Enum
@@ -12,8 +13,6 @@ class GameState(Enum):
     IN_GAME = 2
     LANDED_CRASHED = 3
 
-
-
 def reset_game():
     global lander, camera
     lander = Lander([WINDOW_WIDTH / 2, 50], initial_fuel=1000)
@@ -25,6 +24,9 @@ def main():
     pygame.init()
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.RESIZABLE)
     clock = pygame.time.Clock()
+
+    # Load assets after pygame.init()
+    Lander.load_assets()
 
     score = 0
     start_time = pygame.time.get_ticks()

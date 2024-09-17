@@ -1,5 +1,6 @@
 import random
 import pygame
+import math
 
 class Vector2:
     def __init__(self, x, y):
@@ -238,13 +239,15 @@ class Landscape:
         self.zoneCombis.append([1, 4, 7, 9])
 
     def render(self, surface, camera_rect):
-        # Calculate which tiles are visible
-        start_tile = int(camera_rect.left // self.tileWidth)
-        end_tile = int((camera_rect.right + self.tileWidth - 1) // self.tileWidth)
+        # Calculate how many tiles are needed to cover the screen
+        tiles_needed = math.ceil(camera_rect.width / self.tileWidth) + 2
 
-        for tile in range(start_tile, end_tile + 1):
+        # Calculate the starting tile index based on camera's left position
+        start_tile = int(camera_rect.left // self.tileWidth) - 1
+
+        for tile in range(start_tile, start_tile + tiles_needed):
             offset = tile * self.tileWidth
-            
+
             # Render landscape lines
             for line in self.lines:
                 start_pos = (line.p1.x + offset - camera_rect.left, line.p1.y - camera_rect.top)
@@ -255,5 +258,7 @@ class Landscape:
             # Render stars
             for star in self.stars:
                 star_pos = (star['x'] + offset - camera_rect.left, star['y'] - camera_rect.top)
+                # Wrap stars horizontally
+                star_pos = (star_pos[0] % camera_rect.width, star_pos[1])
                 if 0 <= star_pos[0] < camera_rect.width and 0 <= star_pos[1] < camera_rect.height:
-                    pygame.draw.circle(surface, (255, 255, 255), star_pos, 1)
+                    pygame.draw.circle(surface, (255, 255, 255), (int(star_pos[0]), int(star_pos[1])), 1)

@@ -9,14 +9,14 @@ class Camera:
         self.deadzone_right = int(width * 0.8)
 
     def update(self, target_pos, landscape):
-        # Calculate target position relative to camera
-        rel_x = (target_pos[0] - self.rect.left) % landscape.width
+        # Calculate target position relative to camera without wrapping
+        rel_x = target_pos[0] - self.rect.left
 
         # Horizontal movement
         if rel_x < self.deadzone_left:
             self.rect.x += rel_x - self.deadzone_left
         elif rel_x > self.deadzone_right:
-            self.rect.x -= rel_x - self.deadzone_right
+            self.rect.x += rel_x - self.deadzone_right
 
         # Vertical movement
         self.rect.centery = target_pos[1]
@@ -27,5 +27,5 @@ class Camera:
         elif self.rect.bottom > landscape.height:
             self.rect.bottom = landscape.height
 
-        # Wrap camera horizontally
-        self.rect.left = self.rect.left % landscape.width
+        # Remove horizontal wrapping
+        # self.rect.left = self.rect.left % landscape.width
